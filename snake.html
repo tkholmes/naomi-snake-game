@@ -372,18 +372,18 @@
   function spawnFood() {
     let pos;
     do {
-      // Food is 3x3, so top-left must be within (COLS-2) x (ROWS-2)
-      pos = { x: Math.floor(Math.random() * (COLS - 2)), y: Math.floor(Math.random() * (ROWS - 2)) };
+      // Food is 4x4, so top-left must be within (COLS-3) x (ROWS-3)
+      pos = { x: Math.floor(Math.random() * (COLS - 3)), y: Math.floor(Math.random() * (ROWS - 3)) };
     } while (snake.some(s =>
-      s.x >= pos.x && s.x <= pos.x + 2 &&
-      s.y >= pos.y && s.y <= pos.y + 2
+      s.x >= pos.x && s.x <= pos.x + 3 &&
+      s.y >= pos.y && s.y <= pos.y + 3
     ));
     return pos;
   }
 
   function headHitsFood(head) {
-    return head.x >= food.x && head.x <= food.x + 2 &&
-           head.y >= food.y && head.y <= food.y + 2;
+    return head.x >= food.x && head.x <= food.x + 3 &&
+           head.y >= food.y && head.y <= food.y + 3;
   }
 
   function updateScore() {
@@ -615,7 +615,8 @@
     const len = snake.length;
     // Arms stay near front; legs stay near back
     const armIdx = Math.min(3, len - 1);
-    const legIdx = Math.min(len - 1, Math.max(armIdx + 1, len - 2));
+    // Legs stay in the front half of the dragon (never past the midpoint)
+    const legIdx = Math.min(Math.max(Math.floor(len / 2), armIdx), len - 1);
 
     // Quadruped gait: arms and legs swing in opposite phase
     const armPhase = Math.sin(tickCount * 0.8);
@@ -635,7 +636,6 @@
       const cx = seg.x * GRID + GRID / 2 + Math.cos(ang) * fwdOff;
       const cy = seg.y * GRID + GRID / 2 + Math.sin(ang) * fwdOff;
 
-      const color    = snakeColor(idx, len);
       const upper    = isArm ? 9 : 8;
       const lower    = isArm ? 7 : 7;
       const bend     = isArm ? 0.55 : -0.45;  // arms bend forward, legs back
@@ -646,8 +646,8 @@
         ctx.translate(cx, cy);
         ctx.rotate(ang + (Math.PI / 2) * side + swing);
 
-        ctx.strokeStyle = color;
-        ctx.shadowColor = snakeGlow(idx, len);
+        ctx.strokeStyle = '#FFD700';
+        ctx.shadowColor = 'rgba(255, 200, 0, 0.7)';
         ctx.shadowBlur  = 5;
         ctx.lineCap     = 'round';
         ctx.lineJoin    = 'round';
@@ -770,10 +770,10 @@
     }
 
     // Food (cupcake 3x3)
-    ctx.font = '50px serif';
+    ctx.font = '68px serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('🧁', food.x * GRID + GRID * 1.5, food.y * GRID + GRID * 1.5);
+    ctx.fillText('🧁', food.x * GRID + GRID * 2, food.y * GRID + GRID * 2);
 
     // Sparkles (behind the snake)
     updateAndDrawSparkles();
