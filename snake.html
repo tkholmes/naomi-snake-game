@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Naomi's Neon Snake</title>
+<title>Naomi's Neon Dragon</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -152,7 +152,7 @@
 </head>
 <body>
 <div id="game-container">
-  <h1>Naomi's Neon Snake</h1>
+  <h1>Naomi's Neon Dragon</h1>
 
   <div id="info-bar">
     <span id="score">Score: 0 / 10</span>
@@ -192,9 +192,9 @@
   const SPEEDS = { easy: 180, medium: 120, hard: 72 };
 
   const MESSAGES = [
-    "Great work!", "You're doing it!", "Keep going!", "Amazing!",
-    "Fantastic!", "On fire!", "Nailed it!", "Superb!",
-    "Way to go!", "Impressive!", "Dad Loves You!"
+    "🎉 Great work!", "🐉 You're doing it!", "🔥 Keep going!", "⚡ Amazing!",
+    "🌟 Fantastic!", "💥 On fire!", "🎯 Nailed it!", "✨ Superb!",
+    "🏆 Way to go!", "🦄 Impressive!", "❤️ Dad Loves You!"
   ];
 
   // --- Audio ---
@@ -481,6 +481,274 @@
     toast.classList.add('show');
   }
 
+  // --- Dragon features ---
+  function drawDragonWings() {
+    if (snake.length < 3) return;
+    const seg = snake[2];
+    const cx = seg.x * GRID + GRID / 2;
+    const cy = seg.y * GRID + GRID / 2;
+
+    // Forward direction: segment 2 → segment 1
+    const fwdX = snake[1].x - snake[2].x;
+    const fwdY = snake[1].y - snake[2].y;
+    const perpX = -fwdY;
+    const perpY =  fwdX;
+
+    const wingColor = snakeColor(2, snake.length);
+
+    // Flap: 0 = folded, 1 = fully extended
+    const flapExt = (Math.sin(tickCount * 0.5) + 1) / 2;
+
+    // Wing size parameters — all grow with flapExt
+    const span      = 24 + flapExt * 14;      // 24..38 px perpendicular
+    const fwdReach  =  4 + flapExt * 8;       // leading edge sweeps forward when extended
+    const backReach = 14 - flapExt * 5;       // trailing edge sweeps back when folded
+    const tipBias   = flapExt * 4 - 2;        // tip nudges forward at full extension
+
+    ctx.save();
+    ctx.shadowColor = snakeGlow(2, snake.length);
+    ctx.shadowBlur = 10 + flapExt * 8;
+
+    for (const side of [1, -1]) {
+      const wx = perpX * side;
+      const wy = perpY * side;
+
+      const baseX = cx + wx * 4;
+      const baseY = cy + wy * 4;
+      const tipX  = cx + wx * span             + fwdX * tipBias;
+      const tipY  = cy + wy * span             + fwdY * tipBias;
+      const clawX = cx + wx * (span * 0.55)    - fwdX * backReach;
+      const clawY = cy + wy * (span * 0.55)    - fwdY * backReach;
+      const fclX  = cx + wx * (span * 0.50)    + fwdX * fwdReach;
+      const fclY  = cy + wy * (span * 0.50)    + fwdY * fwdReach;
+
+      // Wing membrane — slightly transparent when folded for depth
+      ctx.globalAlpha = 0.72 + flapExt * 0.28;
+      ctx.fillStyle = wingColor;
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.quadraticCurveTo(fclX, fclY, tipX, tipY);
+      ctx.quadraticCurveTo(clawX, clawY, baseX, baseY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Vein lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(tipX,  tipY);  ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(fclX,  fclY);  ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(clawX, clawY); ctx.stroke();
+      // Extra mid-vein for the larger membrane
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.lineTo((tipX + clawX) / 2, (tipY + clawY) / 2);
+      ctx.stroke();
+
+      // Outer glow edge
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.quadraticCurveTo(fclX, fclY, tipX, tipY);
+      ctx.quadraticCurveTo(clawX, clawY, baseX, baseY);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawDragonTailSpike() {
+    const lastIdx = snake.length - 1;
+    if (lastIdx < 1) return;
+
+    const seg  = snake[lastIdx];
+    const prev = snake[lastIdx - 1];
+    let tailX = seg.x - prev.x;
+    let tailY = seg.y - prev.y;
+
+    // Fallback when segments overlap (snake just grew)
+    if (tailX === 0 && tailY === 0) {
+      if (lastIdx >= 2) {
+        tailX = snake[lastIdx - 1].x - snake[lastIdx - 2].x;
+        tailY = snake[lastIdx - 1].y - snake[lastIdx - 2].y;
+      } else return;
+    }
+
+    const cx = seg.x * GRID + GRID / 2;
+    const cy = seg.y * GRID + GRID / 2;
+    const perpX = -tailY;
+    const perpY =  tailX;
+    const tailColor = snakeColor(lastIdx, snake.length);
+
+    ctx.save();
+    ctx.shadowColor = snakeGlow(lastIdx, snake.length);
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = tailColor;
+
+    // Main spike tip
+    const tipX = cx + tailX * GRID * 0.95;
+    const tipY = cy + tailY * GRID * 0.95;
+
+    ctx.beginPath();
+    ctx.moveTo(cx + perpX * 5, cy + perpY * 5);
+    ctx.lineTo(tipX, tipY);
+    ctx.lineTo(cx - perpX * 5, cy - perpY * 5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Side barbs
+    const bx = cx + tailX * GRID * 0.45;
+    const by = cy + tailY * GRID * 0.45;
+    for (const side of [1, -1]) {
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + perpX * side * 7, by + perpY * side * 7);
+      ctx.lineTo(bx + tailX * 6,        by + tailY * 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawArmsAndLegs() {
+    const len = snake.length;
+    // Arms stay near front; legs stay near back
+    const armIdx = Math.min(3, len - 1);
+    const legIdx = Math.min(len - 1, Math.max(armIdx + 1, len - 2));
+
+    // Quadruped gait: arms and legs swing in opposite phase
+    const armPhase = Math.sin(tickCount * 0.8);
+    const legPhase = -armPhase;
+
+    // Angle pointing FROM segment idx TOWARD the head
+    function segAngle(idx) {
+      if (idx === 0) return Math.atan2(dir.y, dir.x);
+      return Math.atan2(snake[idx - 1].y - snake[idx].y,
+                        snake[idx - 1].x - snake[idx].x);
+    }
+
+    function drawLimb(idx, phase, isArm, fwdOff) {
+      const seg = snake[idx];
+      const ang = segAngle(idx);
+      // Optional small forward/back offset when arms+legs share a segment
+      const cx = seg.x * GRID + GRID / 2 + Math.cos(ang) * fwdOff;
+      const cy = seg.y * GRID + GRID / 2 + Math.sin(ang) * fwdOff;
+
+      const color    = snakeColor(idx, len);
+      const upper    = isArm ? 9 : 8;
+      const lower    = isArm ? 7 : 7;
+      const bend     = isArm ? 0.55 : -0.45;  // arms bend forward, legs back
+
+      for (const side of [1, -1]) {
+        const swing = phase * side * 0.38;  // left/right swing opposite each other
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(ang + (Math.PI / 2) * side + swing);
+
+        ctx.strokeStyle = color;
+        ctx.shadowColor = snakeGlow(idx, len);
+        ctx.shadowBlur  = 5;
+        ctx.lineCap     = 'round';
+        ctx.lineJoin    = 'round';
+
+        // Upper segment (shoulder/hip → elbow/knee)
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(upper, 0);
+        ctx.stroke();
+
+        // Lower segment + end details (elbow/knee → hand/foot)
+        ctx.save();
+        ctx.translate(upper, 0);
+        ctx.rotate(bend);
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(lower, 0);
+        ctx.stroke();
+
+        ctx.translate(lower, 0);
+        ctx.lineWidth = 1.8;
+        if (isArm) {
+          // 3 claws fanning forward from the wrist
+          for (const ca of [-0.45, 0, 0.45]) {
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(4.5 * Math.cos(ca), 4.5 * Math.sin(ca));
+            ctx.stroke();
+          }
+        } else {
+          // 3 toes fanning from the foot
+          for (const ta of [-0.4, 0, 0.4]) {
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(3.5 * Math.cos(ta), 3.5 * Math.sin(ta));
+            ctx.stroke();
+          }
+        }
+
+        ctx.restore(); // elbow translate+rotate
+        ctx.restore(); // limb translate+rotate
+      }
+    }
+
+    const shared = armIdx === legIdx;
+    drawLimb(armIdx, armPhase, true,   shared ?  3 : 0);
+    drawLimb(legIdx, legPhase, false,  shared ? -3 : 0);
+  }
+
+  function drawDragonFlame() {
+    const head = snake[0];
+    const hx = head.x * GRID + GRID / 2;
+    const hy = head.y * GRID + GRID / 2;
+    const flameStart = GRID / 2 - 1;
+
+    // Subtle flicker driven by tickCount
+    const f1 = Math.sin(tickCount * 1.3) * 0.13;
+    const f2 = Math.cos(tickCount * 0.9) * 0.10;
+
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(Math.atan2(dir.y, dir.x));
+
+    // Outer red layer
+    const rLen = 26 * (1 + f1);
+    ctx.fillStyle = 'rgba(255, 25, 0, 0.72)';
+    ctx.shadowColor = 'rgba(255, 60, 0, 0.8)';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(flameStart, 0);
+    ctx.bezierCurveTo(flameStart + rLen * 0.25, -12, flameStart + rLen * 0.65, -9, flameStart + rLen, 0);
+    ctx.bezierCurveTo(flameStart + rLen * 0.65,   9, flameStart + rLen * 0.25, 12, flameStart, 0);
+    ctx.fill();
+
+    // Middle orange layer
+    const oLen = 19 * (1 + f2);
+    ctx.fillStyle = 'rgba(255, 145, 0, 0.82)';
+    ctx.shadowColor = 'rgba(255, 145, 0, 0.6)';
+    ctx.shadowBlur = 7;
+    ctx.beginPath();
+    ctx.moveTo(flameStart, 0);
+    ctx.bezierCurveTo(flameStart + oLen * 0.25, -7, flameStart + oLen * 0.65, -5, flameStart + oLen, 0);
+    ctx.bezierCurveTo(flameStart + oLen * 0.65,  5, flameStart + oLen * 0.25,  7, flameStart, 0);
+    ctx.fill();
+
+    // Yellow core
+    const yLen = 12 * (1 - f1 * 0.4);
+    ctx.fillStyle = 'rgba(255, 245, 30, 0.92)';
+    ctx.shadowColor = 'rgba(255, 255, 120, 0.8)';
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.moveTo(flameStart, 0);
+    ctx.bezierCurveTo(flameStart + yLen * 0.25, -3.5, flameStart + yLen * 0.65, -2.5, flameStart + yLen, 0);
+    ctx.bezierCurveTo(flameStart + yLen * 0.65,  2.5, flameStart + yLen * 0.25,  3.5, flameStart, 0);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   // --- Drawing ---
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -510,6 +778,9 @@
     // Sparkles (behind the snake)
     updateAndDrawSparkles();
 
+    // Dragon tail spike (drawn before body so the base is hidden under the last segment)
+    drawDragonTailSpike();
+
     // Snake
     const len = snake.length;
     snake.forEach((seg, i) => {
@@ -525,6 +796,12 @@
       ctx.strokeRect(seg.x * GRID + inset, seg.y * GRID + inset, GRID - inset * 2, GRID - inset * 2);
     });
     ctx.shadowBlur = 0;
+
+    // Dragon wings on 3rd body segment (drawn on top of body)
+    drawDragonWings();
+
+    // Arms and legs (animated walking cycle)
+    drawArmsAndLegs();
 
     // Snake face on head
     const head = snake[0];
@@ -566,6 +843,9 @@
       ctx.beginPath(); ctx.arc(ex, ey, pupilR, 0, Math.PI * 2); ctx.fill();
     });
 
+    // Dragon flame (drawn before tongue so tongue sits on top)
+    drawDragonFlame();
+
     // Tongue: forked, extending from the front of the head
     const tongueStart = GRID / 2 - 1;
     const tongueLen = 9;
@@ -574,10 +854,12 @@
     ctx.save();
     ctx.translate(hx, hy);
     ctx.rotate(tongueAngle);
-    ctx.strokeStyle = '#ff0000';
-    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = '#ff1100';
+    ctx.lineWidth = 2.2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(255, 30, 0, 0.9)';
+    ctx.shadowBlur = 8;
     // Main tongue
     ctx.beginPath();
     ctx.moveTo(tongueStart, 0);
