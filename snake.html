@@ -699,6 +699,37 @@
     drawLimb(legIdx, legPhase, false,  shared ? -3 : 0);
   }
 
+  function drawDragonHorns() {
+    const hx = snake[0].x * GRID + GRID / 2;
+    const hy = snake[0].y * GRID + GRID / 2;
+
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(Math.atan2(dir.y, dir.x));
+    // In local frame: +x = forward, +y = right side, -y = left side
+
+    ctx.shadowColor = 'rgba(180, 100, 20, 0.9)';
+    ctx.shadowBlur = 8;
+
+    for (const s of [1, -1]) {
+      // Gradient from dark root to pale ivory tip
+      const grad = ctx.createLinearGradient(-3, s * 4, 5, s * 14);
+      grad.addColorStop(0,    '#5C2A08');  // dark brown root
+      grad.addColorStop(0.5,  '#B87030');  // warm amber mid
+      grad.addColorStop(1,    '#ECD898');  // pale ivory tip
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(-3, s * 4);                              // base inner edge
+      ctx.quadraticCurveTo(1, s * 17, 5, s * 14);       // outer arc → tip
+      ctx.quadraticCurveTo(0.5, s * 12, -1, s * 4);    // inner arc ← back to base
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
   function drawDragonFlame() {
     const head = snake[0];
     const hx = head.x * GRID + GRID / 2;
@@ -842,6 +873,9 @@
       ctx.fillStyle = grad;
       ctx.beginPath(); ctx.arc(ex, ey, pupilR, 0, Math.PI * 2); ctx.fill();
     });
+
+    // Bull horns on the head
+    drawDragonHorns();
 
     // Dragon flame (drawn before tongue so tongue sits on top)
     drawDragonFlame();
