@@ -198,10 +198,17 @@
   ];
 
   // --- Audio ---
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // AudioContext must not be created before a user gesture (browser policy).
+  // We create it lazily on first sound play.
+  let audioCtx = null;
+  function getAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
 
   function playChime() {
-    const now = audioCtx.currentTime;
+    const now = getAudioCtx().currentTime;
     const osc1 = audioCtx.createOscillator();
     const osc2 = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -223,7 +230,7 @@
   }
 
   function playThud() {
-    const now = audioCtx.currentTime;
+    const now = getAudioCtx().currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'triangle';
@@ -235,6 +242,155 @@
     gain.connect(audioCtx.destination);
     osc.start(now);
     osc.stop(now + 0.3);
+  }
+
+  function playHurray() {
+    const now = getAudioCtx().currentTime;
+    // Rising fanfare arpeggio: C5 E5 G5 C6 E6 + sustained chord
+    const notes = [523, 659, 784, 1047, 1319];
+    notes.forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t = now + i * 0.13;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.22, t + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.55);
+    });
+    // Triumphant sustained chord at the end
+    [523, 659, 784].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq * 2;
+      const t = now + notes.length * 0.13 + 0.05;
+      gain.gain.setValueAtTime(0.12, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 1.2);
+    });
+  }
+
+  // --- Confetti ---
+  const confettiCanvas = document.createElement('canvas');
+  confettiCanvas.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;';
+  document.body.appendChild(confettiCanvas);
+  const confettiCtx = confettiCanvas.getContext('2d');
+  const CONFETTI_COLORS = ['#ff0066','#ff6600','#ffcc00','#33ff66','#0099ff','#cc33ff','#ff66cc','#ffffff'];
+  let confettiParticles = [], fireworkParticles = [], confettiAnimId = null, confettiFrames = 0;
+
+  function resizeConfettiCanvas() {
+    confettiCanvas.width  = window.innerWidth;
+    confettiCanvas.height = window.innerHeight;
+  }
+  resizeConfettiCanvas();
+  window.addEventListener('resize', resizeConfettiCanvas);
+
+  function launchFirework() {
+    const cx    = confettiCanvas.width  * (0.15 + Math.random() * 0.7);
+    const cy    = confettiCanvas.height * (0.10 + Math.random() * 0.55);
+    const color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+    const count = 32 + Math.floor(Math.random() * 16);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.25;
+      const speed = 3.5 + Math.random() * 5;
+      fireworkParticles.push({
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1.0,
+        decay: 0.020 + Math.random() * 0.018,
+        color,
+        size: 3 + Math.random() * 2.5,
+      });
+    }
+  }
+
+  function animateConfetti() {
+    confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    confettiFrames++;
+
+    // Fireworks: burst every 15 frames for the first 2 seconds (120 frames)
+    if (confettiFrames <= 120 && confettiFrames % 15 === 1) launchFirework();
+
+    // Draw firework particles
+    for (let i = fireworkParticles.length - 1; i >= 0; i--) {
+      const p = fireworkParticles[i];
+      p.x  += p.vx;  p.y  += p.vy;
+      p.vx *= 0.97;  p.vy *= 0.97;   // drag
+      p.vy += 0.09;                   // gravity
+      p.life -= p.decay;
+      if (p.life <= 0) { fireworkParticles.splice(i, 1); continue; }
+      confettiCtx.save();
+      confettiCtx.globalAlpha  = p.life;
+      confettiCtx.shadowColor  = p.color;
+      confettiCtx.shadowBlur   = 8;
+      confettiCtx.fillStyle    = p.color;
+      confettiCtx.beginPath();
+      confettiCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      confettiCtx.fill();
+      confettiCtx.restore();
+    }
+
+    // Confetti: rain for ~3 seconds (180 frames)
+    if (confettiFrames < 180 && confettiFrames % 3 === 0) {
+      for (let i = 0; i < 14; i++) {
+        confettiParticles.push({
+          x: Math.random() * confettiCanvas.width,
+          y: -12,
+          vx: (Math.random() - 0.5) * 4,
+          vy: 1.8 + Math.random() * 2.8,
+          w: 9 + Math.random() * 8,
+          h: 5 + Math.random() * 5,
+          color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+          rot: Math.random() * Math.PI * 2,
+          rotSpeed: (Math.random() - 0.5) * 0.18,
+        });
+      }
+    }
+    for (let i = confettiParticles.length - 1; i >= 0; i--) {
+      const p = confettiParticles[i];
+      p.x += p.vx;  p.y += p.vy;  p.vy += 0.05;  p.rot += p.rotSpeed;
+      if (p.y > confettiCanvas.height + 20) { confettiParticles.splice(i, 1); continue; }
+      confettiCtx.save();
+      confettiCtx.translate(p.x, p.y);
+      confettiCtx.rotate(p.rot);
+      confettiCtx.fillStyle = p.color;
+      confettiCtx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      confettiCtx.restore();
+    }
+
+    const stillGoing = confettiFrames < 180 || confettiParticles.length > 0 || fireworkParticles.length > 0;
+    if (stillGoing) {
+      confettiAnimId = requestAnimationFrame(animateConfetti);
+    } else {
+      confettiAnimId = null;
+      confettiCanvas.style.display = 'none';
+    }
+  }
+
+  function startConfetti() {
+    if (confettiAnimId) cancelAnimationFrame(confettiAnimId);
+    confettiParticles = [];
+    fireworkParticles = [];
+    confettiFrames = 0;
+    confettiCanvas.style.display = 'block';
+    animateConfetti();
+  }
+
+  function stopConfetti() {
+    if (confettiAnimId) { cancelAnimationFrame(confettiAnimId); confettiAnimId = null; }
+    confettiParticles = [];
+    fireworkParticles = [];
+    confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    confettiCanvas.style.display = 'none';
   }
 
   // --- DOM refs ---
@@ -354,6 +510,7 @@
   difficulty = 'medium';
 
   function init() {
+    stopConfetti();
     const cx = Math.floor(COLS / 2);
     const cy = Math.floor(ROWS / 2);
     snake = [{ x: cx, y: cy }, { x: cx - 1, y: cy }, { x: cx - 2, y: cy }];
@@ -394,7 +551,7 @@
   function startGame() {
     if (gameOver) { init(); }
     if (running && !paused) return;
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    getAudioCtx(); // ensure context exists and is running after user gesture
     if (paused) { paused = false; pauseBtn.textContent = 'Pause (P)'; }
     running = true;
     loopId = setInterval(tick, SPEEDS[difficulty]);
@@ -417,13 +574,15 @@
     clearInterval(loopId);
     running = false;
     gameOver = true;
-    playThud();
 
     if (won) {
+      playHurray();
+      startConfetti();
       overlay.classList.add('win');
       overlayTitle.textContent = 'You Win!';
       overlayMsg.textContent = 'You ate all 30 cupcakes! Incredible!';
     } else {
+      playThud();
       overlay.classList.remove('win');
       overlayTitle.textContent = 'Game Over';
       overlayMsg.textContent = reason === 'wall'
@@ -703,26 +862,30 @@
     const hx = snake[0].x * GRID + GRID / 2;
     const hy = snake[0].y * GRID + GRID / 2;
 
+    // Rainbow color cycles with tickCount (same system as body)
+    const rainbowColor = snakeColor(0, snake.length);
+    const rainbowGlow  = snakeGlow(0, snake.length);
+
     ctx.save();
     ctx.translate(hx, hy);
     ctx.rotate(Math.atan2(dir.y, dir.x));
     // In local frame: +x = forward, +y = right side, -y = left side
 
-    ctx.shadowColor = 'rgba(180, 100, 20, 0.9)';
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = rainbowGlow;
+    ctx.shadowBlur  = 12;
 
     for (const s of [1, -1]) {
-      // Gradient from dark root to pale ivory tip
-      const grad = ctx.createLinearGradient(-3, s * 4, 5, s * 14);
-      grad.addColorStop(0,    '#5C2A08');  // dark brown root
-      grad.addColorStop(0.5,  '#B87030');  // warm amber mid
-      grad.addColorStop(1,    '#ECD898');  // pale ivory tip
+      // Gradient: dark root → current rainbow color → bright white tip
+      const grad = ctx.createLinearGradient(-3, s * 5, 8, s * 22);
+      grad.addColorStop(0,    '#1a0830');    // deep dark root
+      grad.addColorStop(0.45, rainbowColor); // rainbow mid
+      grad.addColorStop(1,    '#ffffff');    // bright white tip
 
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.moveTo(-3, s * 4);                              // base inner edge
-      ctx.quadraticCurveTo(1, s * 17, 5, s * 14);       // outer arc → tip
-      ctx.quadraticCurveTo(0.5, s * 12, -1, s * 4);    // inner arc ← back to base
+      ctx.moveTo(-3, s * 5);                              // base inner edge
+      ctx.quadraticCurveTo(2, s * 26, 8, s * 22);       // outer arc → tip (longer)
+      ctx.quadraticCurveTo(1, s * 18, -1, s * 5);       // inner arc ← back to base
       ctx.closePath();
       ctx.fill();
     }
